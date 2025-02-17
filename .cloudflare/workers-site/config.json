@@ -1,0 +1,7 @@
+{
+  "buildConfig": {
+    "buildCommand": "npm install && npm run build",
+    "buildOutputDirectory": "dist",
+    "nodeVersion": "20"
+  }
+}
