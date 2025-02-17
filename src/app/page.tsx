@@ -617,6 +617,9 @@ export default function AudioPlayer() {
         break;
       }
       case "clear":
+        if (isPlaying) {
+          wavesurferRef.current.pause();
+        }
         setRegionStart(null);
         setRegionEnd(null);
         drawWaveform();
@@ -698,7 +701,14 @@ export default function AudioPlayer() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleRegionControl("clear")}
-              className="px-3 py-2 bg-orange-700 text-gray-200 rounded hover:bg-orange-600 text-sm"
+              style={{
+                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent",
+                WebkitTouchCallout: "none",
+                WebkitUserSelect: "none",
+                userSelect: "none",
+              }}
+              className="px-3 py-2 bg-orange-700 text-gray-200 rounded hover:bg-orange-600 text-sm active:bg-orange-500"
             >
               Clear Region
             </button>
