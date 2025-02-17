@@ -4,6 +4,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  distDir: "dist",
   // Disable server components since we're exporting static
   experimental: {
     appDir: true,
