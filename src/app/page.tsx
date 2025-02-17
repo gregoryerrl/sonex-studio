@@ -766,12 +766,14 @@ export default function AudioPlayer() {
                 </button>
                 <button
                   onClick={handlePlayPause}
-                  onTouchStart={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handlePlayPause();
+                  style={{
+                    touchAction: "manipulation",
+                    WebkitTapHighlightColor: "transparent",
+                    WebkitTouchCallout: "none",
+                    WebkitUserSelect: "none",
+                    userSelect: "none",
                   }}
-                  className="p-4 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600"
+                  className="p-4 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600 active:bg-blue-500"
                 >
                   {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
                 </button>
