@@ -768,6 +768,7 @@ export default function AudioPlayer() {
                   onClick={handlePlayPause}
                   onTouchStart={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     handlePlayPause();
                   }}
                   className="p-4 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600"
