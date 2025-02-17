@@ -1,4 +1,4 @@
-# Aural Prototype
+# Sonex-Studio Prototype
 
 A web-based clone of RiffStudio, a powerful music practice and recording application.
 
@@ -25,7 +25,7 @@ A web-based clone of RiffStudio, a powerful music practice and recording applica
 
 ```bash
 git clone [repository-url]
-cd aural-prototype
+cd sonex-studio-prototype
 ```
 
 2. Install dependencies

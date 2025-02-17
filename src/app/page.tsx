@@ -766,6 +766,10 @@ export default function AudioPlayer() {
                 </button>
                 <button
                   onClick={handlePlayPause}
+                  onTouchStart={(e) => {
+                    e.preventDefault();
+                    handlePlayPause();
+                  }}
                   className="p-4 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600"
                 >
                   {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
