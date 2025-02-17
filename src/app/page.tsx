@@ -15,7 +15,7 @@ export default function AudioPlayer() {
   const [regionStart, setRegionStart] = useState<number | null>(null);
   const [regionEnd, setRegionEnd] = useState<number | null>(null);
   const [shouldLoop, setShouldLoop] = useState(true);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(0.8);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
@@ -27,6 +27,7 @@ export default function AudioPlayer() {
   const isDraggedRef = useRef<boolean>(false);
   const [lastDragUpdate, setLastDragUpdate] = useState<number>(0);
   const lastMousePosRef = useRef<{x: number; time: number} | null>(null);
+  const lastDragXRef = useRef<number>(0);
   const animationFrameIdRef = useRef<number | null>(null);
 
   const generateWaveformData = async (file: File) => {
@@ -35,7 +36,11 @@ export default function AudioPlayer() {
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
     const channelData = audioBuffer.getChannelData(0);
-    const samples = 2000; // Increased number of samples for better resolution
+    const duration = audioBuffer.duration;
+    // Calculate samples based on 2 bars per second
+    const samples = Math.ceil(duration * 2);
+    console.log(`Audio duration: ${duration}s, Samples: ${samples}`);
+    
     const blockSize = Math.floor(channelData.length / samples);
     const dataPoints: number[] = [];
 
@@ -90,7 +95,7 @@ export default function AudioPlayer() {
     ctx.clearRect(0, 0, displayWidth, displayHeight);
 
     // Apply zoom to bar dimensions
-    const baseBarWidth = 2;
+    const baseBarWidth = 6;
     const baseBarGap = 1;
     const barWidth = baseBarWidth * zoomLevel;
     const barGap = baseBarGap * zoomLevel;
@@ -109,35 +114,29 @@ export default function AudioPlayer() {
 
     // Create gradient for better visual
     const gradient = ctx.createLinearGradient(0, 0, 0, displayHeight);
-    gradient.addColorStop(0, "rgb(200, 0, 200)");
-    gradient.addColorStop(1, "rgb(150, 0, 150)");
-    ctx.strokeStyle = gradient;
-    ctx.lineWidth = barWidth;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    gradient.addColorStop(0, "rgb(64, 192, 255)");   // Bright blue
+    gradient.addColorStop(1, "rgb(32, 128, 255)");   // Darker blue
+    ctx.fillStyle = gradient;
 
-    // Draw waveform using path for better performance
-    ctx.beginPath();
-    let isFirstPoint = true;
+    // Draw waveform bars
     for (let i = startIndex; i < endIndex; i += 2) {
       const maxPoint = waveformData[i];
       const minPoint = waveformData[i + 1];
       const x = (i / 2) * totalBarWidth - scrollPosition;
 
-      // Draw from max to min point for a connected waveform look
-      const maxHeight = maxPoint * displayHeight * 0.8;
-      const minHeight = minPoint * displayHeight * 0.8;
+      // Calculate bar height
+      const amplitude = Math.max(Math.abs(maxPoint), Math.abs(minPoint));
+      const barHeight = amplitude * displayHeight * 0.8;
       const centerY = displayHeight / 2;
 
-      if (isFirstPoint) {
-        ctx.moveTo(x, centerY + maxHeight / 2);
-        isFirstPoint = false;
-      } else {
-        ctx.lineTo(x, centerY + maxHeight / 2);
-      }
-      ctx.lineTo(x, centerY + minHeight / 2);
+      // Draw a single bar centered vertically
+      ctx.fillRect(
+        x,
+        centerY - barHeight / 2,
+        barWidth,
+        barHeight
+      );
     }
-    ctx.stroke();
 
     // Draw region if exists
     if (regionStart !== null && wavesurferRef.current) {
@@ -147,25 +146,35 @@ export default function AudioPlayer() {
         (regionStart / duration) * totalWidth - scrollPosition;
 
       // Draw region start marker
-      ctx.fillStyle = "rgb(128, 90, 213)"; // Purple color matching the buttons
+      ctx.fillStyle = "rgb(255, 128, 0)"; // Orange color for markers
       ctx.fillRect(regionStartX - 1, 0, 2, displayHeight);
 
       if (regionEnd !== null) {
         const regionEndX = (regionEnd / duration) * totalWidth - scrollPosition;
         // Draw region background
-        ctx.fillStyle = "rgba(0, 0, 255, 0.2)";
+        ctx.fillStyle = "rgba(255, 128, 0, 0.2)"; // Semi-transparent orange
         ctx.fillRect(regionStartX, 0, regionEndX - regionStartX, displayHeight);
 
         // Draw region end marker
-        ctx.fillStyle = "rgb(128, 90, 213)";
+        ctx.fillStyle = "rgb(255, 128, 0)";
         ctx.fillRect(regionEndX - 1, 0, 2, displayHeight);
       }
     }
 
     // Draw center cursor with anti-aliasing
-    ctx.fillStyle = "black";
+    ctx.fillStyle = "rgb(255, 255, 255)"; // White cursor
     const cursorX = displayWidth / 2;
+    // Draw the vertical line
     ctx.fillRect(cursorX - 1, 0, 2, displayHeight);
+    
+    // Draw the arrowhead
+    const arrowSize = 8;
+    ctx.beginPath();
+    ctx.moveTo(cursorX - arrowSize, 0);
+    ctx.lineTo(cursorX + arrowSize, 0);
+    ctx.lineTo(cursorX, arrowSize);
+    ctx.closePath();
+    ctx.fill();
   };
 
   const updatePlayback = () => {
@@ -178,21 +187,33 @@ export default function AudioPlayer() {
     if (regionStart !== null && regionEnd !== null) {
       if (currentTime >= regionEnd) {
         if (shouldLoop) {
+          // Set time and immediately restart playback without waiting for next frame
           wavesurferRef.current.setTime(regionStart);
-          wavesurferRef.current.play();
+          requestAnimationFrame(() => {
+            if (wavesurferRef.current && isPlaying) {
+              wavesurferRef.current.play();
+            }
+          });
         } else {
           wavesurferRef.current.pause();
           setIsPlaying(false);
+          drawWaveform();
         }
       }
     } else {
       if (currentTime >= duration) {
         if (shouldLoop) {
+          // Set time and immediately restart playback without waiting for next frame
           wavesurferRef.current.setTime(0);
-          wavesurferRef.current.play();
+          requestAnimationFrame(() => {
+            if (wavesurferRef.current && isPlaying) {
+              wavesurferRef.current.play();
+            }
+          });
         } else {
           wavesurferRef.current.pause();
           setIsPlaying(false);
+          drawWaveform();
         }
       }
     }
@@ -200,7 +221,7 @@ export default function AudioPlayer() {
     const progress = currentTime / duration;
 
     // Calculate scroll position based on progress with zoom
-    const baseBarWidth = 2;
+    const baseBarWidth = 6;
     const baseBarGap = 1;
     const totalBarWidth = (baseBarWidth + baseBarGap) * zoomLevel;
     const totalWidth = (waveformData.length / 2) * totalBarWidth;
@@ -268,9 +289,14 @@ export default function AudioPlayer() {
         setIsPlaying(false);
         // Center the end of the waveform
         if (canvasRef.current) {
-          const totalWidth = waveformData.length * 3;
-          const canvasWidth = canvasRef.current.width;
-          setScrollPosition(totalWidth - canvasWidth / 2);
+          const baseBarWidth = 6;
+          const baseBarGap = 1;
+          const totalBarWidth = (baseBarWidth + baseBarGap) * zoomLevel;
+          const totalWidth = (waveformData.length / 2) * totalBarWidth;
+          const displayWidth = canvasRef.current.getBoundingClientRect().width;
+          const maxScroll = totalWidth - displayWidth / 2;
+          setScrollPosition(maxScroll);
+          drawWaveform();
         }
       });
     } catch (error) {
@@ -287,7 +313,13 @@ export default function AudioPlayer() {
       wavesurferRef.current.setTime(regionStart);
     }
 
-    wavesurferRef.current.playPause();
+    if (isPlaying) {
+      wavesurferRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      wavesurferRef.current.play();
+      setIsPlaying(true);
+    }
   };
 
   const handleTempoChange = (op: "inc" | "dec" | "reset") => {
@@ -317,6 +349,7 @@ export default function AudioPlayer() {
 
     // Store initial click position and progress
     dragStartXRef.current = e.clientX;
+    lastDragXRef.current = e.clientX;
     dragStartProgressRef.current =
       wavesurferRef.current.getCurrentTime() /
       wavesurferRef.current.getDuration();
@@ -349,6 +382,7 @@ export default function AudioPlayer() {
 
     // Store initial touch position and progress
     dragStartXRef.current = e.touches[0].clientX;
+    lastDragXRef.current = e.touches[0].clientX;
     dragStartProgressRef.current =
       wavesurferRef.current.getCurrentTime() /
       wavesurferRef.current.getDuration();
@@ -375,13 +409,13 @@ export default function AudioPlayer() {
       const currentScroll = scrollPosition;
 
       // Adjust smoothing based on zoom level for better performance at low zoom
-      const smoothFactor = zoomLevel < 1 ? 0.7 : 0.5;
+      const smoothFactor = zoomLevel < 1 ? 0.4 : 0.3;
       const timeStep = (targetTime - currentTime) * smoothFactor;
       const scrollStep = (targetScroll - currentScroll) * smoothFactor;
 
       // Larger threshold for low zoom levels to reduce unnecessary updates
-      const timeThreshold = zoomLevel < 1 ? 0.02 : 0.01;
-      const scrollThreshold = zoomLevel < 1 ? 2 : 1;
+      const timeThreshold = zoomLevel < 1 ? 0.01 : 0.005;
+      const scrollThreshold = zoomLevel < 1 ? 1 : 0.5;
 
       if (
         Math.abs(timeStep) < timeThreshold &&
@@ -424,37 +458,30 @@ export default function AudioPlayer() {
       setLastDragUpdate(now);
 
       const rect = canvasRef.current.getBoundingClientRect();
-      const baseBarWidth = 2;
+      const baseBarWidth = 6;
       const baseBarGap = 1;
       const totalBarWidth = (baseBarWidth + baseBarGap) * zoomLevel;
       const totalWidth = (waveformData.length / 2) * totalBarWidth;
       const displayWidth = rect.width;
 
-      // Calculate drag direction and distance
-      const dragDelta = dragStartXRef.current - e.clientX;
+      // Calculate drag direction and distance relative to last position
+      const dragDelta = e.clientX - lastDragXRef.current;
+      lastDragXRef.current = e.clientX;
+      
+      // Update scroll position directly based on drag
+      const newScrollPosition = scrollPosition - dragDelta;
+      const boundedScrollPosition = Math.max(
+        -displayWidth / 2,
+        Math.min(newScrollPosition, totalWidth - displayWidth / 2)
+      );
 
-      // Optimize time change calculation for low zoom
-      const pixelsPerSecond = totalWidth / wavesurferRef.current.getDuration();
-      const sensitivity = zoomLevel < 1 ? 0.8 : 0.6;
-      const timeChange = (dragDelta / pixelsPerSecond) * sensitivity;
-
-      // Update time based on drag with optimized bounds checking
+      // Calculate time from scroll position
+      const centerPoint = boundedScrollPosition + displayWidth / 2;
+      const progress = centerPoint / totalWidth;
       const duration = wavesurferRef.current.getDuration();
       const currentTime = wavesurferRef.current.getCurrentTime();
-      const targetTime = Math.max(
-        0,
-        Math.min(currentTime + timeChange, duration)
-      );
-
-      // Optimize scroll calculations
-      const progress = targetTime / duration;
-      const currentPoint = totalWidth * progress;
-      const targetScroll = currentPoint - displayWidth / 2;
-      const maxScroll = totalWidth - displayWidth;
-      const boundedTargetScroll = Math.max(
-        -displayWidth / 2,
-        Math.min(targetScroll, maxScroll)
-      );
+      const targetTime = progress * duration;
+      const boundedTime = Math.max(0, Math.min(targetTime, duration));
 
       // Cancel existing animation more efficiently
       if (animationFrameIdRef.current) {
@@ -462,21 +489,22 @@ export default function AudioPlayer() {
         animationFrameIdRef.current = null;
       }
 
-      // Only start animation if significant change
-      const minChange = zoomLevel < 1 ? 0.5 : 0.1;
+      // Adjust minimum change threshold for mobile
+      const isMobile = window.innerWidth <= 768;
+      const minChange = isMobile
+        ? (zoomLevel < 1 ? 0.1 : 0.02)   // Reduced thresholds for mobile
+        : (zoomLevel < 1 ? 0.2 : 0.05);  // Reduced thresholds for desktop
+      
       if (
-        Math.abs(targetTime - currentTime) > minChange ||
-        Math.abs(boundedTargetScroll - scrollPosition) > minChange
+        Math.abs(boundedTime - currentTime) > minChange ||
+        Math.abs(boundedScrollPosition - scrollPosition) > minChange
       ) {
-        smoothSeek(targetTime, boundedTargetScroll);
+        smoothSeek(boundedTime, boundedScrollPosition);
       } else {
         // Direct update for small changes
-        wavesurferRef.current.setTime(targetTime);
-        setScrollPosition(boundedTargetScroll);
+        wavesurferRef.current.setTime(boundedTime);
+        setScrollPosition(boundedScrollPosition);
       }
-
-      // Update drag start position
-      dragStartXRef.current = e.clientX;
     };
 
     const handleGlobalTouchMove = (e: TouchEvent) => {
@@ -536,7 +564,7 @@ export default function AudioPlayer() {
     wavesurferRef.current.setTime(targetTime);
 
     // Update scroll position to center the target point
-    const baseBarWidth = 2;
+    const baseBarWidth = 6;
     const baseBarGap = 1;
     const totalBarWidth = (baseBarWidth + baseBarGap) * zoomLevel;
     const totalWidth = waveformData.length * totalBarWidth;
@@ -610,7 +638,7 @@ export default function AudioPlayer() {
     const progress = centerTime / duration;
 
     // Calculate new total width based on zoom
-    const baseBarWidth = 2;
+    const baseBarWidth = 6;
     const baseBarGap = 1;
     const totalBarWidth = (baseBarWidth + baseBarGap) * newZoom;
     const totalWidth = waveformData.length * totalBarWidth;
@@ -630,114 +658,121 @@ export default function AudioPlayer() {
   };
 
   return (
-    <div className="p-4">
-      <h1 className="text-2xl font-bold mb-4">Aural Prototype</h1>
-      <div className="space-y-4">
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-2 md:p-4">
+      <h1 className="text-xl md:text-2xl font-bold mb-4 text-blue-400">Sonex-Studio Prototype</h1>
+      <div className="space-y-3 md:space-y-4">
         <input
           type="file"
-          accept="audio/*"
+          accept=".mp3,.wav,.m4a,.aac,.ogg,.flac"
           onChange={handleFileUpload}
-          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          className="block w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-900 file:text-blue-300 hover:file:bg-blue-800"
         />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleTempoChange("dec")}
-            className="w-8 h-8 bg-gray-200 rounded-full hover:bg-gray-300 flex items-center justify-center"
-            disabled={!audioFile}
-          >
-            -
-          </button>
-          <span className="w-12 text-center font-mono">
-            {tempo.toFixed(1)}x
-          </span>
-          <button
-            onClick={() => handleTempoChange("inc")}
-            className="w-8 h-8 bg-gray-200 rounded-full hover:bg-gray-300 flex items-center justify-center"
-            disabled={!audioFile}
-          >
-            +
-          </button>
-          <button
-            onClick={() => handleTempoChange("reset")}
-            className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
-            disabled={!audioFile}
-          >
-            Reset
-          </button>
-          <button
-            onClick={() => handleRegionControl("clear")}
-            className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600"
-          >
-            Clear Region
-          </button>
-          <label className="flex items-center gap-2 ml-2">
-            <input
-              type="checkbox"
-              checked={shouldLoop}
-              onChange={(e) => {
-                if (isPlaying && wavesurferRef.current) {
-                  wavesurferRef.current.pause();
-                }
-                setShouldLoop(e.target.checked);
-              }}
-              className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-            />
-            <span className="text-sm text-gray-600">Loop Playback</span>
-          </label>
+        {/* Tempo Controls */}
+        <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleTempoChange("dec")}
+              className="w-10 h-10 bg-gray-800 text-gray-300 rounded-full hover:bg-gray-700 flex items-center justify-center text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!audioFile}
+            >
+              -
+            </button>
+            <span className="w-16 text-center font-mono text-sm text-gray-300">
+              {tempo.toFixed(1)}x
+            </span>
+            <button
+              onClick={() => handleTempoChange("inc")}
+              className="w-10 h-10 bg-gray-800 text-gray-300 rounded-full hover:bg-gray-700 flex items-center justify-center text-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!audioFile}
+            >
+              +
+            </button>
+            <button
+              onClick={() => handleTempoChange("reset")}
+              className="px-3 py-2 bg-gray-800 text-gray-300 rounded hover:bg-gray-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!audioFile}
+            >
+              Reset
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleRegionControl("clear")}
+              className="px-3 py-2 bg-orange-700 text-gray-200 rounded hover:bg-orange-600 text-sm"
+            >
+              Clear Region
+            </button>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shouldLoop}
+                onChange={(e) => {
+                  if (isPlaying && wavesurferRef.current) {
+                    wavesurferRef.current.pause();
+                  }
+                  setShouldLoop(e.target.checked);
+                }}
+                className="w-4 h-4 text-blue-500 bg-gray-800 rounded focus:ring-blue-500 focus:ring-offset-gray-900"
+              />
+              <span className="text-sm text-gray-300">Loop</span>
+            </label>
+          </div>
         </div>
-        <div className="flex items-center gap-2 w-full">
-          <span className="text-sm text-gray-600">Zoom:</span>
+        {/* Zoom Control */}
+        <div className="flex items-center gap-2 w-full max-w-sm mx-auto md:mx-0">
+          <span className="text-sm text-gray-300 min-w-[3rem]">Zoom:</span>
           <input
             type="range"
-            min="0.5"
-            max="5"
+            min="0.2"
+            max="2"
             step="0.1"
             value={zoomLevel}
             onChange={handleZoomChange}
-            className="w-48 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+            className="flex-grow h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
           />
-          <span className="text-sm text-gray-600">{zoomLevel.toFixed(1)}x</span>
+          <span className="text-sm text-gray-300 min-w-[3rem] text-right">{(zoomLevel/0.8).toFixed(1)}x</span>
         </div>
+        {/* Waveform */}
         <div ref={containerRef} className="relative">
           <canvas
             ref={canvasRef}
-            className="w-full h-[200px] bg-gray-50 rounded-lg cursor-pointer select-none touch-none"
+            className="w-full h-[120px] bg-gray-800 rounded-lg cursor-pointer select-none touch-none"
             onMouseDown={handleMouseDown}
             onTouchStart={handleTouchStart}
           />
         </div>
+        {/* Playback Controls */}
         <div className="flex items-center gap-2">
           {audioFile && (
             <div className="flex flex-col justify-center items-center gap-2 w-full">
-              <div className="flex w-full justify-center items-center gap-2">
-                {/* Playback Buttons */}
+              <div className="flex w-full justify-center items-center gap-3">
                 <button
                   onClick={handleSkipBack}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  className="p-3 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600"
                 >
-                  <SkipBack />
+                  <SkipBack className="w-5 h-5" />
                 </button>
                 <button
                   onClick={() => handleRegionControl("start")}
-                  className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600"
+                  className="p-3 bg-orange-700 text-gray-200 rounded-full hover:bg-orange-600 text-lg font-bold"
                 >
                   [
                 </button>
                 <button
                   onClick={() => handleRegionControl("end")}
-                  className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600"
+                  className="p-3 bg-orange-700 text-gray-200 rounded-full hover:bg-orange-600 text-lg font-bold"
                 >
                   ]
                 </button>
                 <button
                   onClick={handlePlayPause}
-                  className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+                  className="p-4 bg-blue-700 text-gray-200 rounded-full hover:bg-blue-600"
                 >
-                  {isPlaying ? <Pause /> : <Play />}
+                  {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6" />}
                 </button>
               </div>
-              <div className="text-sm text-gray-600">
-                Use the buttons above to set loop region start and end points.
+              <div className="text-xs md:text-sm text-gray-400">
+                Use [ and ] to set loop region points
               </div>
             </div>
           )}
