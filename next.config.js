@@ -5,10 +5,6 @@ const nextConfig = {
     unoptimized: true,
   },
   distDir: "dist",
-  // Disable server components since we're exporting static
-  experimental: {
-    appDir: true,
-  },
 };
 
 module.exports = nextConfig;
